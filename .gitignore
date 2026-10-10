@@ -1,0 +1,27 @@
+# Never commit runtime data, credentials, dependencies, or release output.
+/dist/
+**/.env
+**/.env.*
+!backend/.env.example
+**/vendor/
+**/node_modules/
+**/.dart_tool/
+**/build/
+**/.pub-cache/
+**/.idea/
+**/.vscode/
+**/ephemeral/
+**/*.sqlite
+**/*.sqlite-shm
+**/*.sqlite-wal
+**/*.log
+**/*.apk
+**/*.exe
+**/*.zip
+**/android/key.properties
+**/android/local.properties
+**/*.jks
+**/*.keystore
+**/*hs_err_pid*.log
+**/*replay_pid*.log
+**/.phpunit.result.cache

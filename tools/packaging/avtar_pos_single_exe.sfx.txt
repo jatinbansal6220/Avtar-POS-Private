@@ -1,0 +1,7 @@
+;!@Install@!UTF-8!
+Title="AvtarPOS"
+BeginPrompt="AvtarPOS is starting."
+RunProgram="avtar_pos.exe"
+GUIMode="2"
+TempMode
+;!@InstallEnd@!

@@ -1,0 +1,6 @@
+;!@Install@!UTF-8!
+Title="AvtarPOS"
+Progress="no"
+Directory=""
+RunProgram="cmd.exe /c %%T\\install_avtar_pos.cmd"
+;!@InstallEnd@!
