@@ -1,5 +1,6 @@
 param([switch]$NoBrowser, [ValidateRange(1024,65535)][int]$Port = 8080)
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $url = "http://127.0.0.1:$Port/"
 
