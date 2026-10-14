@@ -1,5 +1,6 @@
 @echo off
 setlocal
+set "PSModulePath=%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules;%ProgramFiles%\WindowsPowerShell\Modules"
 title Avtar POS Localhost
 echo Starting Avtar POS localhost. Please keep the extracted folders together.
 set "AVTAR_LAUNCH_ROOT=%~dp0"

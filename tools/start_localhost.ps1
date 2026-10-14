@@ -4,6 +4,13 @@ $ProgressPreference = 'SilentlyContinue'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $url = "http://127.0.0.1:$Port/"
 
+function Get-PackageHash([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+    finally { $stream.Dispose(); $sha.Dispose() }
+}
+
 function Test-AppServer {
     try {
         $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2
@@ -33,9 +40,12 @@ try {
             $archive = Join-Path $packageDir 'AvtarPOS-Localhost-Windows.zip'
             $hashFile = Join-Path $packageDir 'SHA256.txt'
             Invoke-WebRequest "$releaseBase/SHA256.txt" -OutFile $hashFile -UseBasicParsing
-            Invoke-WebRequest "$releaseBase/AvtarPOS-Localhost-Windows.zip" -OutFile $archive -UseBasicParsing
             $expected = ((Get-Content -LiteralPath $hashFile -Raw).Trim() -split '\s+')[0]
-            if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $expected) {
+            if ($expected -notmatch '^[a-fA-F0-9]{64}$') { throw 'Invalid release checksum file.' }
+            if (-not (Test-Path -LiteralPath $archive) -or (Get-PackageHash $archive) -ne $expected) {
+                Invoke-WebRequest "$releaseBase/AvtarPOS-Localhost-Windows.zip" -OutFile $archive -UseBasicParsing
+            }
+            if ((Get-PackageHash $archive) -ne $expected) {
                 throw 'Downloaded package checksum did not match. Please double-click again to retry.'
             }
             Expand-Archive -LiteralPath $archive -DestinationPath $bundleRoot -Force
