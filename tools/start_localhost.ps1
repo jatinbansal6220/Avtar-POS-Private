@@ -1,7 +1,7 @@
-param([switch]$NoBrowser)
+param([switch]$NoBrowser, [ValidateRange(1024,65535)][int]$Port = 8080)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$url = 'http://127.0.0.1:8080/'
+$url = "http://127.0.0.1:$Port/"
 
 function Test-AppServer {
     try {
@@ -12,7 +12,7 @@ function Test-AppServer {
 
 try {
     if (-not (Test-AppServer)) {
-        $listener = Get-NetTCPConnection -State Listen -LocalPort 8080 -ErrorAction SilentlyContinue
+        $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
         if ($listener) { throw 'Port 8080 is used by another application. Close that application or ask your developer; its process will not be stopped.' }
 
         $buildName = 'local-preview'
@@ -21,25 +21,33 @@ try {
         }
         $buildIndex = Join-Path $projectRoot "frontend\build\$buildName\index.html"
         if (-not (Test-Path -LiteralPath $buildIndex)) {
-            $flutterCommand = Get-Command flutter -ErrorAction SilentlyContinue
-            $flutterPath = if ($flutterCommand) { $flutterCommand.Source } else { 'D:\CodexTemp\AvtarPOS\flutter\bin\flutter.bat' }
-            if (-not (Test-Path -LiteralPath $flutterPath)) { throw 'Flutter SDK not found. Install the compatible Flutter SDK and add it to PATH.' }
-            $temporaryDir = Join-Path $projectRoot 'frontend\build\launcher-temp'
-            New-Item -ItemType Directory -Force -Path $temporaryDir | Out-Null
-            $env:TEMP = $temporaryDir
-            $env:TMP = $temporaryDir
-            Push-Location (Join-Path $projectRoot 'frontend')
-            try {
-                & $flutterPath pub get
-                if ($LASTEXITCODE -ne 0) { throw 'Flutter dependencies could not be prepared.' }
-                & $flutterPath build web --release --no-wasm-dry-run --dart-define=DEMO_MODE=true --output=build/local-preview
-                if ($LASTEXITCODE -ne 0) { throw 'Local demo build failed. Review the build error above.' }
-            } finally { Pop-Location }
-            $buildName = 'local-preview'
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            $packageDir = Join-Path $projectRoot 'frontend\build\launcher-package'
+            $bundleRoot = Join-Path $packageDir 'bundle'
+            $bundledLauncher = Join-Path $bundleRoot 'tools\start_localhost.ps1'
+            if (-not ((Test-Path -LiteralPath (Join-Path $bundleRoot 'frontend\build\local-preview\index.html')) -and (Test-Path -LiteralPath (Join-Path $bundleRoot 'tools\runtime\python\python.exe')) -and (Test-Path -LiteralPath $bundledLauncher))) {
+            Write-Host 'First run: downloading the ready localhost package. Internet is required once.' -ForegroundColor Cyan
+            New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+            $releaseBase = 'https://github.com/jatinbansal6220/Avtar-POS-Private/releases/download/localhost-v20261014'
+            $archive = Join-Path $packageDir 'AvtarPOS-Localhost-Windows.zip'
+            $hashFile = Join-Path $packageDir 'SHA256.txt'
+            Invoke-WebRequest "$releaseBase/SHA256.txt" -OutFile $hashFile -UseBasicParsing
+            Invoke-WebRequest "$releaseBase/AvtarPOS-Localhost-Windows.zip" -OutFile $archive -UseBasicParsing
+            $expected = ((Get-Content -LiteralPath $hashFile -Raw).Trim() -split '\s+')[0]
+            if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $expected) {
+                throw 'Downloaded package checksum did not match. Please double-click again to retry.'
+            }
+            Expand-Archive -LiteralPath $archive -DestinationPath $bundleRoot -Force
+            }
+            if (-not (Test-Path -LiteralPath $bundledLauncher)) { throw 'Localhost package is incomplete.' }
+            $launcherArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $bundledLauncher, '-Port', $Port)
+            if ($NoBrowser) { $launcherArguments += '-NoBrowser' }
+            & powershell.exe @launcherArguments
+            exit $LASTEXITCODE
         }
-
         $pythonPath = $null
         $candidates = @(
+            (Join-Path $projectRoot 'tools\runtime\python\python.exe'),
             (Join-Path $env:USERPROFILE '.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'),
             (Get-Command python -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source),
             (Get-Command py -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
@@ -54,7 +62,7 @@ try {
         $logDir = Join-Path $projectRoot 'frontend\build\launcher'
         New-Item -ItemType Directory -Force -Path $logDir | Out-Null
         $serverScript = Join-Path $PSScriptRoot 'serve_local_preview.py'
-        $server = Start-Process -FilePath $pythonPath -ArgumentList @('-B', ('"' + $serverScript + '"'), '--build-dir', $buildName) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $logDir 'server-output.log') -RedirectStandardError (Join-Path $logDir 'server-error.log')
+        $server = Start-Process -FilePath $pythonPath -ArgumentList @('-B', ('"' + $serverScript + '"'), '--build-dir', $buildName, '--port', $Port) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $logDir 'server-output.log') -RedirectStandardError (Join-Path $logDir 'server-error.log')
         $ready = $false
         for ($attempt = 0; $attempt -lt 20; $attempt++) {
             if (Test-AppServer) { $ready = $true; break }

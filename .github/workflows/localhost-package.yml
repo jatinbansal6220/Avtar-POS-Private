@@ -1,0 +1,52 @@
+name: Portable localhost package
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/localhost-package.yml'
+permissions:
+  contents: write
+jobs:
+  package:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          channel: stable
+          cache: true
+      - name: Build local demo
+        working-directory: frontend
+        run: |
+          flutter pub get
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency setup failed' }
+          flutter build web --release --no-wasm-dry-run --dart-define=DEMO_MODE=true --output=build/local-preview
+          if ($LASTEXITCODE -ne 0) { throw 'Localhost build failed' }
+      - name: Bundle app, launcher and portable Python
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Join-Path $env:RUNNER_TEMP 'AvtarPOS-Localhost'
+          New-Item -ItemType Directory -Force -Path "$package/tools/runtime/python", "$package/frontend/build", 'dist/localhost' | Out-Null
+          Invoke-WebRequest 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip' -OutFile "$env:RUNNER_TEMP/python.zip"
+          Expand-Archive "$env:RUNNER_TEMP/python.zip" "$package/tools/runtime/python"
+          if ((Get-AuthenticodeSignature "$package/tools/runtime/python/python.exe").Status -ne 'Valid') { throw 'Portable Python signature verification failed' }
+          Copy-Item frontend/build/local-preview "$package/frontend/build/local-preview" -Recurse
+          Copy-Item START_APP_LOCALHOST.bat $package
+          Copy-Item tools/start_localhost.ps1, tools/serve_local_preview.py "$package/tools"
+          @('Avtar POS localhost demo (Windows 64-bit)', '', '1. Extract this whole ZIP into a folder.', '2. Double-click START_APP_LOCALHOST.bat.', '3. The browser opens http://127.0.0.1:8080/.', '', 'No Flutter, Python installation, administrator access or ChatGPT required.', 'Repeat the same double-click after restarting the PC.', 'Keep all folders together. Demo data stays in this browser on this PC.', 'This is the local DEMO. It does not sign in or sync with the production server.') | Set-Content "$package/START-HERE.txt"
+          Compress-Archive "$package/*" 'dist/localhost/AvtarPOS-Localhost-Windows.zip'
+          $hash = (Get-FileHash 'dist/localhost/AvtarPOS-Localhost-Windows.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  AvtarPOS-Localhost-Windows.zip" | Set-Content 'dist/localhost/SHA256.txt'
+          & "$package/tools/runtime/python/python.exe" -c 'import http.server; print("Portable runtime verified")'
+          if ($LASTEXITCODE -ne 0) { throw 'Portable runtime failed' }
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: localhost-v20261014
+          name: Avtar POS double-click localhost demo
+          make_latest: false
+          body: 'Extract the ZIP and double-click START_APP_LOCALHOST.bat. Includes the local demo app and portable Python; no manual tools or ChatGPT needed. No production server deployment.'
+          files: |
+            dist/localhost/AvtarPOS-Localhost-Windows.zip
+            dist/localhost/SHA256.txt
