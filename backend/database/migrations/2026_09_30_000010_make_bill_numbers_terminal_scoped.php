@@ -14,6 +14,9 @@ return new class extends Migration {
      * rejecting the other terminal's real sale.
      */
     public function up(): void {
+        // On a fresh database the later 000012 migration adds the terminal
+        // columns and this index together. Keep the existing index until then.
+        if (!Schema::hasColumn('bills', 'source_terminal_id')) return;
         $indexes = collect(DB::select('SHOW INDEX FROM bills'))
             ->groupBy('Key_name')
             ->map(fn ($columns) => $columns
@@ -41,6 +44,8 @@ return new class extends Migration {
     }
 
     public function down(): void {
+        // 000012 rollback has already removed the terminal identity columns.
+        if (!Schema::hasColumn('bills', 'source_terminal_id')) return;
         Schema::table('bills', function (Blueprint $table) {
             $table->dropUnique('bills_user_terminal_bill_unique');
             $table->unique(['user_id', 'bill_number']);
