@@ -32,7 +32,7 @@ class RestaurantTest extends TestCase {
     public function test_auth_and_tenant_isolation(): void {
         [$table,$item]=$this->setupRestaurant();
         $order=$this->order($table,$item);
-        $bill=$this->write('POST','bills/generate',['order_id'=>$order['id'],'version'=>1,'payment_method'=>'cash'])->assertCreated()->json();
+        $bill=$this->write('POST','bills/generate',['order_id'=>$order['id'],'version'=>1,'discount_basis_points'=>0,'payment_method'=>'cash'])->assertCreated()->json();
         $other=User::factory()->create(['role'=>'owner']); Sanctum::actingAs($other);
         $this->getJson('/api/menu_items/'.$item['id'])->assertNotFound();
         $this->write('POST','orders',['order_type'=>'dine_in','table_id'=>$table['id'],'items'=>[['menu_item_id'=>$item['id'],'quantity'=>1]]])->assertNotFound();
