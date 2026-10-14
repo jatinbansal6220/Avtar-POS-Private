@@ -19,7 +19,9 @@ This repository contains the source required to continue Avtar Cooks / AvtarPOS 
 
 ## First setup
 
-For a Windows localhost demo, double-click `START_APP_LOCALHOST.bat`. It opens the app at `http://127.0.0.1:8080/`, reuses an existing app server, or starts one in the background. A fresh checkout needs compatible Flutter on PATH and Python 3.8+; the first launch builds the demo, so allow extra time. Later launches reuse the existing build. After source changes, rebuild using the commands in `00_START_HERE_AI_PROMPT.txt`. Local preview data stays in that browser origin.
+For a Windows localhost demo, extract the **AvtarPOS-Localhost-Windows.zip** package from [GitHub Releases](https://github.com/jatinbansal6220/Avtar-POS-Private/releases/tag/localhost-v20261014), then double-click `START_APP_LOCALHOST.bat`. The package includes the built demo and portable Python: no Flutter/Python installation, administrator access or ChatGPT is needed. It opens `http://127.0.0.1:8080/` and starts the server in the background. After restarting the PC, double-click the same BAT again. Keep the extracted folders together.
+
+From a fresh **source ZIP**, the same BAT downloads and verifies this package on its first run; internet is required once. Later runs reuse the downloaded package. After editing source, rebuild using `00_START_HERE_AI_PROMPT.txt`. This localhost package is a **demo**; it does not sign in or sync with the production server. Browser data stays on that PC at the same localhost origin.
 
 1. Read `frontend/README.md` for Flutter run/build instructions.
 2. Read `backend/README.md` for VPS deployment, migrations, and environment setup.
