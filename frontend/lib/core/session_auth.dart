@@ -25,6 +25,7 @@ extension SessionAuth on Session {
     String password,
     String code,
   ) async {
+    if (syncing) throw ApiFailure(409, 'Sync is completing. Please try again.');
     base = liveBase;
     final data = await request(
       'POST',
@@ -41,10 +42,13 @@ extension SessionAuth on Session {
             : 'Android terminal',
       },
     );
+    await _detachLocalAccount();
     token = data['token'];
     user = data['user'];
     expired = false;
     await initialiseAppLockFromLogin(password);
+    await cacheAccountLogin(password);
+    accountLoginRequired = false;
     await refreshBusinessClock();
     await Session.prefs.setString(
       'session',
@@ -79,6 +83,7 @@ extension SessionAuth on Session {
     token = data['token'];
     user = data['user'];
     expired = false;
+    await cacheAccountLogin(password);
     await refreshBusinessClock();
     await Session.prefs.setString(
       'session',
@@ -93,13 +98,15 @@ extension SessionAuth on Session {
     if (demoMode) {
       // Local previews open directly. Keep the real restaurant session in
       // its own preference and retain the existing demo SQLite account.
-      final cached = Session.prefs.getString('demo_session') ??
+      final cached =
+          Session.prefs.getString('demo_session') ??
           Session.prefs.getString('session');
       Json? demoUser;
       if (cached != null) {
         try {
           final data = jsonDecode(cached) as Json;
-          if (data['token'] == 'demo-token' && data['user'] is Map &&
+          if (data['token'] == 'demo-token' &&
+              data['user'] is Map &&
               data['user']['id'] != null) {
             demoUser = Map<String, dynamic>.from(data['user']);
           }
@@ -109,19 +116,23 @@ extension SessionAuth on Session {
       }
       base = liveBase;
       token = 'demo-token';
-      user = demoUser ?? {
-        'id': 1,
-        'name': 'Demo Owner',
-        'email': 'local-demo@example.com',
-        'role': 'owner',
-        'restaurant_name': 'Avtar Cooks Demo',
-      };
+      user =
+          demoUser ??
+          {
+            'id': 1,
+            'name': 'Demo Owner',
+            'email': 'local-demo@example.com',
+            'role': 'owner',
+            'restaurant_name': 'Avtar Cooks Demo',
+          };
       expired = false;
       appLocked = false;
       await _open(syncEnabled: false);
       await seedOfflineDemo(local!);
-      await Session.prefs.setString('demo_session',
-          jsonEncode({'base': base, 'token': token, 'user': user}));
+      await Session.prefs.setString(
+        'demo_session',
+        jsonEncode({'base': base, 'token': token, 'user': user}),
+      );
       ready = true;
       changed();
       return;
@@ -164,14 +175,21 @@ extension SessionAuth on Session {
               if (error.status == 401 || error.status == 403) {
                 await _forgetInvalidSession();
               }
+            } on SocketException {
+              online = false;
+            } on TimeoutException {
+              online = false;
+            } on http.ClientException {
+              online = false;
             }
           }
           if (user != null) {
             await _provisionDemoLock();
             await restoreAppLock();
-            await _open();
+            accountLoginRequired = !demoMode;
+            appLocked = false;
+            await _open(syncEnabled: demoMode);
             if (demoMode) await seedOfflineDemo(local!);
-            if (!demoMode) unawaited(sync());
           }
         }
       } catch (_) {
@@ -199,11 +217,15 @@ extension SessionAuth on Session {
     expired = false;
     appLocked = false;
     appLockConfigured = false;
+    accountLoginRequired = false;
     appLockOnMinimize = false;
     await Session.prefs.remove('session');
   }
 
   Future<void> login(String apiAddress, String email, String password) async {
+    if (syncing) {
+      throw ApiFailure(409, 'Sync is completing. Please try signing in again.');
+    }
     // Temporary local UI demo bypass. Remove before deployment.
     final demoAuthBypass = demoMode;
     if (demoAuthBypass) {
@@ -232,30 +254,67 @@ extension SessionAuth on Session {
     // The app has a fixed production endpoint. This avoids stale local
     // settings sending an owner login to the retired server.
     base = liveBase;
-    token = '';
-    final data = await request(
-      'POST',
-      'auth/login',
-      body: {
-        'email': email.trim(),
-        'password': password,
-        'device_name': kIsWeb
-            ? 'Browser terminal'
-            : Platform.isWindows
-            ? 'Windows counter'
-            : 'Android terminal',
-      },
-    );
+    Json data;
+    try {
+      data = await request(
+        'POST',
+        'auth/login',
+        body: {
+          'email': email.trim(),
+          'password': password,
+          'device_name': kIsWeb
+              ? 'Browser terminal'
+              : Platform.isWindows
+              ? 'Windows counter'
+              : 'Android terminal',
+        },
+      );
+    } catch (error) {
+      final networkUnavailable =
+          error is SocketException ||
+          error is TimeoutException ||
+          error is http.ClientException;
+      final sameAccount =
+          email.trim().toLowerCase() ==
+          '${user?['email'] ?? ''}'.trim().toLowerCase();
+      if (!networkUnavailable ||
+          !accountLoginRequired ||
+          !sameAccount ||
+          local == null ||
+          expired ||
+          token.isEmpty)
+        rethrow;
+      final cached = Session.prefs.getString(_accountLoginKey) ?? '';
+      if (!await verifyCachedLogin(cached, password)) {
+        throw ApiFailure(
+          403,
+          cached.isEmpty
+              ? 'Connect to the internet once to verify this account for offline sign-in.'
+              : 'Email or password is incorrect.',
+        );
+      }
+      accountLoginRequired = false;
+      appLocked = false;
+      online = false;
+      await startControlPolicy();
+      _startAccountSyncTimer();
+      await sync();
+      changed();
+      return;
+    }
+    await _detachLocalAccount();
     token = data['token'];
     user = data['user'];
     expired = false;
     await initialiseAppLockFromLogin(password);
+    await cacheAccountLogin(password);
     await refreshBusinessClock();
     await Session.prefs.setString(
       'session',
       jsonEncode({'base': base, 'token': token, 'user': user}),
     );
     await _open();
+    accountLoginRequired = false;
     // Local save never waits for the network, but a successful login should
     // flush the durable queue before the owner starts a new billing session.
     await sync();
@@ -274,9 +333,41 @@ extension SessionAuth on Session {
       await local!.setMeta('bills_history_contract', '2');
     }
     await refreshOutboxCounts();
+    if (!syncEnabled && !demoMode) return;
     await startControlPolicy();
     if (!syncEnabled || demoMode) return;
     unawaited(refreshBusinessClock());
+    _startAccountSyncTimer();
+  }
+
+  String get _accountLoginKey => 'account_login_pbkdf2_v1_$base/${user!['id']}';
+
+  Future<void> _detachLocalAccount() async {
+    timer?.cancel();
+    retryTimer?.cancel();
+    controlTimer?.cancel();
+    await local?.db.close();
+    local = null;
+    controlPolicy = {};
+    syncError = null;
+    syncFailures = 0;
+    queued = 0;
+    conflicts = 0;
+    _syncRequestedWhileBusy = false;
+    demoDeveloperGrant = null;
+    demoDeveloperGrantExpires = null;
+    demoDeveloperIdentity = null;
+  }
+
+  Future<void> cacheAccountLogin(String password) async {
+    if (demoMode || user == null) return;
+    await Session.prefs.setString(
+      _accountLoginKey,
+      await createCachedLogin(password),
+    );
+  }
+
+  void _startAccountSyncTimer() {
     timer?.cancel();
     // Pull remote changes while connected; failed writes use the backoff scheduler.
     timer = Timer.periodic(const Duration(seconds: 2), (_) {

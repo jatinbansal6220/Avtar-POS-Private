@@ -10,7 +10,25 @@ permissions:
   contents: read
 
 jobs:
+  tenant-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, mbstring
+          coverage: none
+      - name: Verify backend restaurant data isolation
+        working-directory: backend
+        run: |
+          composer install --prefer-dist --no-interaction --no-progress
+          cp .env.example .env
+          php artisan key:generate
+          php artisan test --filter=test_auth_and_tenant_isolation
   build:
+    needs: tenant-isolation
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
@@ -25,12 +43,12 @@ jobs:
         run: |
           flutter pub get
           if ($LASTEXITCODE -ne 0) { throw 'Dependency resolution failed' }
-          flutter test --no-pub test/owner_code_setup_test.dart test/analytics_graph_test.dart test/usability_flow_test.dart
+          flutter test --no-pub test/account_login_test.dart test/login_layout_test.dart test/demo_startup_test.dart test/offline_sync_test.dart test/owner_code_setup_test.dart test/analytics_graph_test.dart test/usability_flow_test.dart
           if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
       - name: Build production Windows client
         working-directory: frontend
         run: |
-          flutter build windows --no-pub --release --build-name=1.0.30 --build-number=32 --dart-define=APP_VERSION=1.0.30 --dart-define=DEMO_MODE=false
+          flutter build windows --no-pub --release --build-name=1.0.31 --build-number=33 --dart-define=APP_VERSION=1.0.31 --dart-define=DEMO_MODE=false
           if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
       - name: Package single-file client setup
         shell: pwsh
@@ -47,21 +65,21 @@ jobs:
           Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $redist
           if ((Get-AuthenticodeSignature $redist).Status -ne 'Valid') { throw 'Runtime signature validation failed' }
           $source = Get-Content 'tools/packaging/AvtarPosSelfInstaller.cs' -Raw
-          $source = $source.Replace('private const string ProductVersion = "0.0.0";', 'private const string ProductVersion = "1.0.30";')
-          $source = $source.Replace('AssemblyVersion("0.0.0.0")', 'AssemblyVersion("1.0.30.0")')
-          $source = $source.Replace('AssemblyFileVersion("0.0.0.0")', 'AssemblyFileVersion("1.0.30.0")')
+          $source = $source.Replace('private const string ProductVersion = "0.0.0";', 'private const string ProductVersion = "1.0.31";')
+          $source = $source.Replace('AssemblyVersion("0.0.0.0")', 'AssemblyVersion("1.0.31.0")')
+          $source = $source.Replace('AssemblyFileVersion("0.0.0.0")', 'AssemblyFileVersion("1.0.31.0")')
           $sourcePath = Join-Path $work 'Setup.cs'
           [IO.File]::WriteAllText($sourcePath,$source,[Text.UTF8Encoding]::new($false))
-          $setup = Join-Path $output 'AvtarPOS-Client-Setup-1.0.30.exe'
+          $setup = Join-Path $output 'AvtarPOS-Client-Setup-1.0.31.exe'
           $compiler = "$env:WINDIR/Microsoft.NET/Framework64/v4.0.30319/csc.exe"
           & $compiler /nologo /target:winexe "/out:$setup" "/win32icon:$PWD/frontend/windows/runner/resources/app_icon.ico" /r:System.Windows.Forms.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll "/resource:$payload,AvtarPOS.Payload" "/resource:$redist,AvtarPOS.VCRedist" $sourcePath
           if ($LASTEXITCODE -ne 0) { throw 'Setup compilation failed' }
-          @('Avtar POS 1.0.30 Windows x64 production client.', 'Run AvtarPOS-Client-Setup-1.0.30.exe and sign in with your restaurant account.', 'Live API: https://avtarpos.duckdns.org/api', 'Orders and bills save locally first, then sync online.', 'Server database credentials are not included in this client.') | Set-Content "$output/README.txt"
+          @('Avtar POS 1.0.31 Windows x64 production client.', 'Run AvtarPOS-Client-Setup-1.0.31.exe and sign in with your restaurant account.', 'Live API: https://avtarpos.duckdns.org/api', 'Orders and bills save locally first, then sync online.', 'Server database credentials are not included in this client.') | Set-Content "$output/README.txt"
           $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  AvtarPOS-Client-Setup-1.0.30.exe" | Set-Content "$output/SHA256.txt"
+          "$hash  AvtarPOS-Client-Setup-1.0.31.exe" | Set-Content "$output/SHA256.txt"
       - uses: actions/upload-artifact@v4
         with:
-          name: AvtarPOS-Windows-1.0.30
+          name: AvtarPOS-Windows-1.0.31
           path: dist/windows/
           retention-days: 30
           if-no-files-found: error

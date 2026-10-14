@@ -10,6 +10,7 @@ extension SessionApi on Session {
     if (demoMode) {
       return _offlineResponse(method, path, body);
     }
+    final accountIdentity = '$base/${user?['id']}';
     final req = http.Request(method, Uri.parse('$base/$path'));
     req.headers.addAll({
       'Accept': 'application/json',
@@ -41,6 +42,9 @@ extension SessionApi on Session {
     // A valid JSON response (including a validation error) proves that this
     // terminal can reach the live API. Do not leave the whole POS labelled
     // Offline merely because a later background refresh is slow.
+    if (accountIdentity != '$base/${user?['id']}') {
+      throw ApiFailure(409, 'Account changed. Please retry this action.');
+    }
     if (!online || syncError != null) {
       online = true;
       syncError = null;

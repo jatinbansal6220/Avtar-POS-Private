@@ -193,6 +193,7 @@ extension SessionSync on Session {
   }
 
   Future<void> sync() async {
+    if (accountLoginRequired) return;
     if (!policyAllows('sync')) return;
     if (demoMode || local == null || expired || installingUpdate) return;
     if (syncing) return;

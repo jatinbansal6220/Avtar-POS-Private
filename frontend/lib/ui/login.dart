@@ -23,6 +23,12 @@ class _LoginPageState extends State<LoginPage> {
   bool busy = false, obscure = true, creating = false;
   String? error;
   @override
+  void initState() {
+    super.initState();
+    email.text = '${widget.session.user?['email'] ?? ''}';
+  }
+
+  @override
   void dispose() {
     url.dispose();
     email.dispose();
@@ -141,12 +147,14 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          'Sign in to your restaurant',
+                          creating
+                              ? 'Create your restaurant account'
+                              : 'Sign in to your restaurant',
                           style: Theme.of(context).textTheme.headlineMedium,
                         ),
                         const SizedBox(height: 12),
                         const Text(
-                          'Use the account provided by your administrator.',
+                          'Sign in with your restaurant account. Each restaurant has its own data.',
                           style: TextStyle(color: Colors.black54),
                         ),
                         const SizedBox(height: 32),
@@ -167,7 +175,7 @@ class _LoginPageState extends State<LoginPage> {
                           keyboardType: TextInputType.emailAddress,
                           autofillHints: const [AutofillHints.username],
                           decoration: const InputDecoration(
-                            labelText: 'Email address',
+                            labelText: 'Email / login ID',
                           ),
                           validator: (s) => s != null && s.contains('@')
                               ? null
@@ -235,7 +243,13 @@ class _LoginPageState extends State<LoginPage> {
                           width: double.infinity,
                           child: FilledButton(
                             onPressed: busy ? null : submit,
-                            child: Text(busy ? 'Signing in…' : 'Sign in'),
+                            child: Text(
+                              busy
+                                  ? (creating
+                                        ? 'Creating account…'
+                                        : 'Signing in…')
+                                  : (creating ? 'Create account' : 'Sign in'),
+                            ),
                           ),
                         ),
                       ],

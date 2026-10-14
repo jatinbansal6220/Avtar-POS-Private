@@ -30,10 +30,22 @@ class RestaurantTest extends TestCase {
         $this->seed(); $this->assertDatabaseCount('menu_items',0);$this->assertDatabaseCount('orders',0);$this->assertDatabaseCount('users',1);
     }
     public function test_auth_and_tenant_isolation(): void {
-        [$table,$item]=$this->setupRestaurant(); $other=User::factory()->create(); Sanctum::actingAs($other);
+        [$table,$item]=$this->setupRestaurant();
+        $order=$this->order($table,$item);
+        $bill=$this->write('POST','bills/generate',['order_id'=>$order['id'],'version'=>1,'payment_method'=>'cash'])->assertCreated()->json();
+        $other=User::factory()->create(['role'=>'owner']); Sanctum::actingAs($other);
         $this->getJson('/api/menu_items/'.$item['id'])->assertNotFound();
         $this->write('POST','orders',['order_type'=>'dine_in','table_id'=>$table['id'],'items'=>[['menu_item_id'=>$item['id'],'quantity'=>1]]])->assertNotFound();
         $this->getJson('/api/tables')->assertJsonCount(0,'data');
+        $this->getJson('/api/orders/'.$order['id'])->assertNotFound();
+        $this->getJson('/api/bills/'.$bill['id'])->assertNotFound();
+        $this->getJson('/api/bills')->assertJsonCount(0,'data');
+        $this->getJson('/api/settings')->assertJsonCount(0,'data');
+        $this->getJson('/api/updates?last_checked=0')->assertJsonCount(0,'changes');
+        $this->write('DELETE','bills/'.$bill['id'],['version'=>1,'delete_code_hash'=>hash('sha256','fixture-code')])->assertNotFound();
+        $this->assertDatabaseHas('bills',['id'=>$bill['id'],'user_id'=>$this->owner->id,'deleted_at'=>null]);
+        Sanctum::actingAs($this->owner);
+        $this->getJson('/api/bills/'.$bill['id'])->assertOk();
     }
     public function test_atomic_bill_rounding_price_snapshot_and_retry(): void {
         [$table,$item]=$this->setupRestaurant();$order=$this->order($table,$item);

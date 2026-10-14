@@ -58,6 +58,7 @@ class _AvtarAppState extends State<AvtarApp> with WidgetsBindingObserver {
     if (developerOpening ||
         renewingAccount ||
         !session.ready ||
+        session.accountLoginRequired ||
         session.installingUpdate) {
       return;
     }
@@ -200,7 +201,9 @@ class _AvtarAppState extends State<AvtarApp> with WidgetsBindingObserver {
                 ),
               ),
             )
-          : session.user == null || session.local == null
+          : session.accountLoginRequired ||
+                session.user == null ||
+                session.local == null
           ? LoginPage(session)
           : session.appLocked
           ? AppLockPage(session)

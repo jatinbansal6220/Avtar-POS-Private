@@ -1,6 +1,6 @@
 AVTAR POS - COPY THIS PROMPT INTO YOUR AI CODING ACCOUNT
 =====================================================
-Clone/open https://github.com/ISanjuAi2/Avtar-all-code-backend-frontend
+Clone/open https://github.com/jatinbansal6220/Avtar-POS-Private
 Give your AI access to the project folder. Replace the placeholders below.
 Never send passwords, server credentials or customer databases in a prompt.
 
@@ -35,6 +35,13 @@ and sync flow, current risks and the next safe task.
   Never make local saving wait for internet or an API response.
 - Preserve account isolation, durable outbox writes, idempotency, conflict
   checks, API payloads and compatibility with installed EXE/APK clients.
+- Production startup must show the restaurant email/login ID and password
+  page, never a shared password or automatic access to a cached account.
+- Preserve the API/account-ID SQLite namespace and pending drafts/outbox
+  when switching accounts. Never apply one account's delayed API response
+  to another account. Backend records must remain restaurant/tenant scoped.
+- Offline startup is permitted only for the cached, previously verified
+  account using its salted password verifier. Never enable demo bypass in EXE.
 - Preserve incremental KOT, shared merged-table orders, bill calculations,
   selected UPI QR, staff permissions and developer feature controls.
 - Preserve purchasing payments, returns and stock ledger invariants.

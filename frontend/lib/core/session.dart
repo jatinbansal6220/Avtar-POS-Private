@@ -15,6 +15,7 @@ import 'models.dart';
 import '../features/analytics/local_reports.dart';
 import '../features/billing/billing_calculator.dart';
 import 'build_info.dart';
+import 'cached_login.dart';
 import '../features/banks/upi_qr.dart';
 import 'update_platform.dart';
 import 'feature_policy.dart';
@@ -82,6 +83,7 @@ class Session extends ChangeNotifier {
   bool online = true, syncing = false, ready = false, expired = false;
   bool installingUpdate = false;
   bool appLocked = false, appLockConfigured = false, appLockOnMinimize = false;
+  bool accountLoginRequired = false;
   String? syncError;
   int queued = 0, conflicts = 0;
   Future<void> refreshOutboxCounts() async {
@@ -301,6 +303,7 @@ class Session extends ChangeNotifier {
     local = null;
     user = null;
     token = '';
+    accountLoginRequired = false;
     appLocked = false;
     appLockConfigured = false;
     appLockOnMinimize = false;
